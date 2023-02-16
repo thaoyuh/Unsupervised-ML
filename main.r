@@ -3,120 +3,87 @@
 #------------------------------------
 # load packages
 if(!require(pacman)){install.packages("pacman")}
-p_load(tidyverse, simglm, rlist, latex2exp, 
-       glmnet, knitr, formatR, devtools, glmnetUtils,rpart,
-       caret,parallel,functional, ipred,rattle,rpart.plot,plyr)
+p_load(tidyverse, PMA, rlist, latex2exp, knitr, formatR, devtools, reshape2, 
+       ggplot2, ggbiplot, factoextra, pracma, gtools,sparsepca, ggplot2)
 
 # set seed
 set.seed(432)
 
 # import manual functions
-source("./dev/toolbox.r")
+source("./dev/functions.r")
 
-#------------------------------------
-#         Data Preparation           
-#------------------------------------
+#---------------------------------------------
+#                Data Preparation           
+#---------------------------------------------
 # Load data
-cleaned_data <- read_csv("cleaned_data.csv")
-df <- data.frame(cleaned_data) 
-df[is.na(df)] <- 0
+dfData <- read_csv("data.csv")
+attach(dfData)
 
-# Split train and test data
-ind <- sample(c(TRUE, FALSE), nrow(df), replace=TRUE, prob=c(0.7,0.3))
-df_train  <- df[ind, ]
-df_test   <- df[-ind, ]
+# Remove irrelevant columns
+dfData = dfData[,-c(1, 33)]
 
-mXTrain = subset(df_train, select=-c(fraudulent)) %>% as.matrix()
-vYTrain = as.vector(df_train$fraudulent)    
-mXTest = subset(df_test, select=-c(fraudulent)) %>% as.matrix()
-vYTest = as.vector(df_test$fraudulent)    
+# Format the dependent variable
+dfData$diagnosis = ifelse(dfData$diagnosis =="M", 1, 0)
 
-#------------------------------------
-#         Logistic Regression            
-#------------------------------------
-# Initialize
-lLambda=10^seq(-10, 5, length.out = 50)
-lAlpha = seq(0, 1, length.out = 50)
-nfolds = 10
+# Scale all feature variables
+dfData[, -c(1)] <- scale(dfData[, -c(1)]) %>% as.matrix()
 
-# Cross validate for optimal alpha and lambda
-lResult= CV_lambda_alpha(mXTrain, vYTrain, lLambda, lAlpha, nfolds)
+#----------------------------------------------
+#         Principle Component Analysis            
+#----------------------------------------------
+lPCA = prcomp(dfData, center = TRUE, scale = TRUE)
 
-# Get most and least optimal alphas
-dAlphaMin = lAlpha[which.min(lResult)] # Most optimal
-dAlphaMax = lAlpha[which.max(lResult)] # Least optimal
+# Choose PC with eigenvalues of greater than 1
+library(factoextra)
+eig.val <- get_eigenvalue(lPCA)
+eig.val
 
-#' Keeping fixed most and least optimal alphas, 
-#' compare difference in cross-validated errors over lambdas.
-Cv_res = compare_alphas_cv(mXTrain, vYTrain, dAlphaMin, dAlphaMax, lLambda)
-Cv_min =Cv_res[[1]]
-cat("best CV lambda", Cv_min$lambda.min)
-cat("best CV lambda 1SE", Cv_min$lambda.1se)
+#Scree plot 
+fviz_eig(lPCA, addlabels = TRUE, 
+         linecolor = "Red", ylim = c(0, 50))
+# Variable plot
+fviz_pca_var(lPCA,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("deepskyblue", "gold", "hotpink"),
+             repel = TRUE,     
+             select.var = list(name =NULL, cos2 = NULL, contrib = 10)
+)
 
+# Explained variance cumulative sum
+plot(
+  cumsum(lPCA$sdev^2/sum(lPCA$sdev^2)*100) ,
+  xlab = "Components" ,
+  ylab = "Cumulative Percentage of Variance" , type = "b",
+  pch = 16
+)
 
-# Prediction
-vBeta=coef(Cv_min, s = "lambda.min")
-probabilities <- Cv_min %>% predict(mXTest, type = "response")
-log_predictions <- ifelse(probabilities > 0.5, 1, 0)
+# Correlation plot
+library(corrplot)
+var <- get_pca_var(lPCA)
+var$cor[,1:6]
+corrplot(var$cor[,1:6], is.corr=FALSE)
 
-# Evaluation
-log_evaluations = model_evaluate(log_predictions, vYTest)
+# Total cos2 of variables on Dim.1 and Dim.3
+fviz_cos2(lPCA, choice = "var", axes = 1:3 , top = 15)
 
-#------------------------------------
-#            Decision Tree            
-#------------------------------------
+# Contributions of variables to PC1
+fviz_contrib(lPCA, choice = "var", axes = 1, top = 10)
+# Contributions of variables to PC2
+fviz_contrib(lPCA, choice = "var", axes = 2, top = 10)
 
-# Get the cp value of optimal pruned tree using train data
-fit = pruned_tree(df_train)
-ptree = fit[[1]]
-cp_optimal = fit[[2]]
+# Individual plot
+fviz_pca_ind(lPCA, 
+             repel = TRUE, # Avoid text overlapping (slow if many points)
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = factor(dfData$diagnosis), # color by groups
+             palette =  c("#00AFBB", "FC4E07"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups"
+)
 
-# Predictions on test set
-tree_predictions = predict(ptree, df_test, type = 'class')
-
-# Evaluation
-tree_evaluation = model_evaluate(tree_predictions, vYTest)
-
-#------------------------------------
-#      Bagging Manual Algorithm             
-#------------------------------------
-iNTree = 500
-
-#Get predictions and our of bag errors for 500 bagged samples in parallel with 8 cores
-lBagResult = mclapply(1: iNTree, function(i) {bagged_tree_manual(df_train, df_test)}, 
-                      mc.cores = parallel::detectCores(), mc.set.seed = TRUE)
-
-# Extract list of OOB results in parallel
-lOOB_result = mclapply(1:length(lBagResult), function(i){extract_OOB_result(lBagResult[[i]])}, 
-                     mc.cores = parallel::detectCores(), mc.set.seed = TRUE)
-
-# Get out_of_bag set and predictions
-df_OOB_set = do.call("rbind", lOOB_result)
-
-# Get evaluations on out of bag sample
-OOB_evaluations = model_evaluate(df_OOB_set$prediction, df_OOB_set$fraudulent)
-
-# Extract list of predictions on test set in parallel
-lPredictions = mclapply(1:length(lBagResult), function(i){extract_bag_pred(lBagResult[[i]])}, 
-                        mc.cores = parallel::detectCores(), mc.set.seed = TRUE)
-
-# Get predictions through majority votes
-bagging_predictions_manual = majority_vote_bagging(lPredictions)
-
-# Evaluations on test set
-bag_evaluations_test_set = model_evaluate(bagging_predictions_manual, vYTest)
-
-#------------------------------------
-#       Bagging Using Package             
-#------------------------------------
-# Predict on test set
-bag_predictions = bagged_package(df_train, df_test, iNTree, cp_optimal)
-
-# Evaluations
-bag_evaluations_package = model_evaluate(bag_predictions, vYTest)
-
-
-
-
-
+# plot diagnosis scatter
+Diagnosis = dfData$diagnosis
+PC_plot<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=Diagnosis, col= Diagnosis))+ 
+  geom_point(alpha=0.5) + #stat_ellipse(aes(color=Diagnosis), level = 0.95)
+PC_plot + scale_color_gradient(low="deepskyblue", high="hotpink")
 
