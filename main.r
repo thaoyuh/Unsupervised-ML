@@ -3,8 +3,8 @@
 #------------------------------------
 # load packages
 if(!require(pacman)){install.packages("pacman")}
-p_load(tidyverse, PMA, latex2exp, knitr, formatR, devtools, 
-       ggplot2, ClusterR, cluster, factoextra, gtools, ggplot2, caret, corrplot)
+p_load(tidyverse, PMA, latex2exp, knitr, formatR, devtools, readr,datasets,
+       ggplot2, ClusterR, cluster, factoextra, gtools, ggplot2, caret, corrplot, xtable)
 
 # set seed
 set.seed(432)
@@ -38,8 +38,8 @@ eig.val <- get_eigenvalue(lPCA)
 eig.val
 
 #Scree plot 
-fviz_eig(lPCA, addlabels = TRUE, barcolor = "deepskyblue",  barfill = "deepskyblue",
-         linecolor = "hotpink", ylim = c(0, 50))
+fviz_eig(lPCA, addlabels = TRUE, barcolor = "dodgerblue",  barfill = "dodgerblue",
+         linecolor = "maroon", ylim = c(0, 50))
 # Variable plot
 fviz_pca_var(lPCA,
              col.var = "contrib", # Color by contributions to the PC
@@ -62,10 +62,10 @@ var$cor[,1:6]
 corrplot(var$cor[,1:2], is.corr=FALSE)
 
 # Total cos2 of variables on Dim.1 and Dim.2 QUESTION: choose first 3 or 6?
-fviz_cos2(lPCA, choice = "var", axes = 1:2 , top = 10)
+fviz_cos2(lPCA, choice = "var", axes = 1:2 , top = 30)
 
 # Contributions of variables to PC1
-fviz_contrib(lPCA, choice = "var", axes = 1:2, top = 30)
+fviz_contrib(lPCA, choice = "var", axes = 1:2, top = 30, color = "dodgerblue", fill="dodgerblue")
 # Contributions of variables to PC2
 fviz_contrib(lPCA, choice = "var", axes = 2, top = 10)
 
@@ -81,9 +81,9 @@ fviz_pca_ind(lPCA,
 
 # plot diagnosis scatter
 Diagnosis = dfData$diagnosis
-PC_plot<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=Diagnosis, col= Diagnosis))+ 
+PC_plot<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=factor(Diagnosis), col= Diagnosis))+ 
   geom_point(alpha=0.5) + stat_ellipse(aes(color=Diagnosis), level = 0.95)
-PC_plot + scale_color_gradient(low="deepskyblue", high="hotpink")
+PC_plot + scale_color_gradient(low="dodgerblue", high="maroon")
 
 
 #----------------------------------------------
@@ -104,12 +104,36 @@ confusionMatrix(factor(kmeans$cluster), factor(dfData$diagnosis), mode = "prec_r
 # Model Evaluation and visualization
 # plot diagnosis scatter from kmean
 require(gridExtra)
-K_mean_diagnosis = kmeans$cluster
-PC_plot1<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=K_mean_diagnosis, col= K_mean_diagnosis))+ 
-  geom_point(alpha=0.5) + stat_ellipse(aes(color=K_mean_diagnosis), level = 0.90) + scale_color_gradient(low="deepskyblue", high="hotpink")
+K_mean_cluster = kmeans$cluster
+PC_plot1<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=K_mean_cluster, col= K_mean_cluster))+ 
+  geom_point(alpha=0.5) + stat_ellipse(aes(color=K_mean_diagnosis), level = 0.85) + scale_color_gradient(low="dodgerblue", high="maroon")
 # plot diagnosis scatter from kmean
-Real_diagnosis = dfData$diagnosis
-PC_plot2<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=Real_diagnosis, col= Real_diagnosis))+ 
-  geom_point(alpha=0.5) + stat_ellipse(aes(color=Real_diagnosis), level = 0.90)+ scale_color_gradient(low="deepskyblue", high="hotpink")
+Real_cluster = dfData$diagnosis
+PC_plot2<-ggplot(as.data.frame(lPCA$x), aes(x=PC1, y=PC2,group=Real_cluster, col= Real_cluster))+ 
+  geom_point(alpha=0.5) + stat_ellipse(aes(color=Real_diagnosis), level = 0.85)+ scale_color_gradient(low="dodgerblue", high="maroon")
 grid.arrange(PC_plot1, PC_plot2, ncol=2)
+
+#----------------------------------------------
+#             Agglomerative clustering            
+#----------------------------------------------
+
+# Load data
+data("iris")
+
+#Get a subset of data to test clustering
+dfIris = sample_n(iris,  30)
+dfIris = scale(dfIris[,-5])
+
+# Calculate distance matrix
+mD = as.matrix(dist(dfIris))
+
+manual_merge_height = hierachichal_cluster(dfIris, mD, "complete")
+
+package_clusters = hclust(dist(dfIris), method="complete")
+package_height = as.matrix(package$height)
+package_merge = as.matrix(package$merge)
+
+df <- cbind(as.matrix(manual_merge_height),package_merge, package_height)
+xtable(df) #Export as Latex table
+
 
