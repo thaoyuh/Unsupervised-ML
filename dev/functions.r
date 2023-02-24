@@ -1,8 +1,30 @@
-#---------------------------------------------------
-#         Manual hierachical clustering            
-#---------------------------------------------------
+#----------------------------------------------------
+#               K-means with chosen PC            
+#----------------------------------------------------
+#' Function to perform and evaluate K-means clusters based on the number of principle components used
+#' 
+#' @param dfData dataframe, explain variables.
+#' @param mD matrix, pairwise distances
+#' @param linkage string, linkage type: "single" or "complete"
 
-#' Function to cross validate for all hyperparameters in Elastic Net.
+#' @return Encoder_C encoder matrix with final clusters.
+k_mean_with_PC = function(lPCA, num_PC, nstart){
+  dfPCA = lPCA$x[,1:num_PC]
+  
+  # Clustering
+  kmeans <- kmeans(dfPCA, centers = 2, nstart = nstart)
+  kmeans$cluster <-replace(kmeans$cluster, kmeans$cluster==2, 0) #reformat
+  
+  # Confusion Matrix
+  confusion = confusionMatrix(factor(kmeans$cluster), factor(dfData$diagnosis), mode = "prec_recall", positive="1")
+  return(list(kmeans, confusion))
+  }
+
+#----------------------------------------------------------------------
+#             Manual hierarchical clustering functions           
+#----------------------------------------------------------------------
+
+#' Function to calculate the merges and heights of all clusters in hierarchical clustering
 #' 
 #' @param dfData dataframe, explain variables.
 #' @param mD matrix, pairwise distances
@@ -44,11 +66,33 @@ hierachichal_cluster = function (dfData, mD, linkage){
     minD = Temporary_encoder_matrix [which(Temporary_encoder_matrix[ ,3] == min(Temporary_encoder_matrix[ ,3])),]
     #update initial clusters
     init_C [which(init_C == minD[2]) ] = minD[1]
-    #update final clusters
+    #update final clusters with heights
     Encoder_C[j,1] = minD[1]
-    Encoder_C[j,2] = minD[2]
-    Encoder_C[j,3] = minD[3]
+    Encoder_C[j,2] = minD[2] 
+    Encoder_C[j,3] = minD[3] #heights of clusters
   }
   return (Encoder_C)
+}
+
+#' Function to calculate the linkage
+#' 
+#' @param mD matrix, pairwise distances
+#' @param clus_1 cluster 1
+#' @param clus_2 cluster 2
+#' @return linkage linkage of distance between two cluster
+single_linkage = function(mD, clus_1, clus_2){
+  likage = min(mD[clus_1, clus_2])
+  return(likage)
+}
+
+#' Function to calculate the linkage
+#' 
+#' @param mD matrix, pairwise distances
+#' @param clus_1 cluster 1
+#' @param clus_2 cluster 2
+#' @return linkage linkage of distance between two cluster
+complete_linkage = function(mD, clus_1, clus_2){
+  likage = max(mD[clus_1, clus_2])
+  return(likage)
 }
 
