@@ -40,9 +40,9 @@ hierachichal_cluster = function (dfData, mD, linkage){
   for(j in 1:(nrow(dfData)-1)){
     # Get unique cluster indices after each update
     ind = unique(init_C)
+    num=length(ind)
     #Temporary encoder matrix after updating clusters
-    Temporary_encoder_matrix = matrix(0, (length(ind) * ((length(ind) - 1) / 2)), 3)
-    
+    Temporary_encoder_matrix = matrix(NA, nrow=(num*(num-1)/2),ncol=3)
     #Get pairwise distances
     k=1
     for(G in 1:(length(ind) - 1)) {
@@ -50,11 +50,11 @@ hierachichal_cluster = function (dfData, mD, linkage){
         clus_G = which(init_C == ind[G])
         clus_H = which(init_C == ind[H])
         if(linkage == "single"){
-          Temporary_encoder_matrix[k,] = c(ind[G], ind[H], complete_linkage(mD , clus_G, clus_H))
+          Temporary_encoder_matrix[k,] = c(ind[G],ind[H],complete_linkage(mD,clus_G, clus_H))
           k=k+1
         }
         else if(linkage == "complete"){
-          Temporary_encoder_matrix[k,] = c(ind[G], ind[H], complete_linkage(mD , clus_G, clus_H))
+          Temporary_encoder_matrix[k,] = c(ind[G],ind[H],complete_linkage(mD,clus_G,clus_H))
           k=k+1
         }
         else{

@@ -96,8 +96,8 @@ manual_merge_height = hierachichal_cluster(dfIris, mD, "complete")
 
 # Package algorithm
 package_clusters = hclust(dist(dfIris), method="complete")
-package_height = as.matrix(package$height)
-package_merge = as.matrix(package$merge)
+package_height = as.matrix(package_clusters$height)
+package_merge = as.matrix(package_clusters$merge)
 
 # Format outputs
 df <- cbind(as.matrix(manual_merge_height),package_merge, package_height)
